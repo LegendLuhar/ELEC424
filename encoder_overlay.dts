@@ -1,0 +1,60 @@
+/*
+ * encoder_overlay.dts – Device-tree overlay for the ELEC 424 optical encoder
+ *
+ * Adds a platform device node that the encoder_driver.ko kernel module
+ * matches against via its "elec424,optical-encoder" compatible string.
+ *
+ * Default pin: GPIO 17 (BCM / physical pin 11).
+ * Change the number in the "gpios" line if you wire the encoder OUT pin
+ * to a different GPIO.
+ *
+ * Build:
+ *   dtc -@ -I dts -O dtb -o encoder_overlay.dtbo encoder_overlay.dts
+ *
+ * Install on RPi 5:
+ *   sudo cp encoder_overlay.dtbo /boot/firmware/overlays/
+ *   # then add  dtoverlay=encoder_overlay  to /boot/firmware/config.txt
+ *   sudo reboot
+ *
+ * Notes:
+ *   - RPi 5 SoC compatible string is "brcm,bcm2712"
+ *   - On RPi 5 the main user-GPIO controller is referenced as &gpio in
+ *     overlays (resolves to the RP1 GPIO block)
+ *   - GPIO_ACTIVE_HIGH (= 0) means the signal is asserted high;
+ *     change to GPIO_ACTIVE_LOW (= 1) if your encoder board inverts output
+ */
+
+/dts-v1/;
+/plugin/;
+
+/* Pull in GPIO flag constants so GPIO_ACTIVE_HIGH is defined */
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+    /* Declare which SoC this overlay targets */
+    compatible = "brcm,bcm2712";
+
+    fragment@0 {
+        /* Attach our new node directly under the root "/" */
+        target-path = "/";
+
+        __overlay__ {
+            /*
+             * optical_encoder – platform device for encoder_driver.ko
+             *
+             * The driver calls  devm_gpiod_get(&pdev->dev, NULL, GPIOD_IN)
+             * which looks up the "gpios" property defined here.
+             */
+            optical_encoder: encoder@0 {
+                compatible = "elec424,optical-encoder";
+
+                /* GPIO 17, active-high (no inversion).
+                 * Replace 17 with whichever BCM pin you wired the
+                 * encoder OUT lead to. */
+                gpios = <&gpio 17 GPIO_ACTIVE_HIGH>;
+
+                status = "okay";
+            };
+        };
+    };
+};
