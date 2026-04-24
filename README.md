@@ -1,2 +1,3 @@
 # ELEC424
-ELEC 424 Projects
+
+This repository contains all code for the ELEC 424 Mobile and Embedded Systems class. 
