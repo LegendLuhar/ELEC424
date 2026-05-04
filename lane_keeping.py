@@ -34,8 +34,8 @@ STEERING_PIN = 19   # Servo signal wire (white) → GPIO 19
 # ── PWM Duty Cycle Settings (50 Hz, period = 20 ms) ─────────────────────────
 # 7.5% = 1.5 ms pulse = neutral/straight for both ESC and servo
 DUTY_NEUTRAL  = 7.5    # ESC neutral / servo straight
-DUTY_FORWARD  = 8.5    # Forward speed
-DUTY_MAX      = 8.7    # Hard cap
+DUTY_FORWARD  = 8.0    # Forward speed
+DUTY_MAX      = 8.2    # Hard cap
 DUTY_LEFT     = 6.0    # Full left steering
 DUTY_RIGHT    = 9.0    # Full right steering
 PWM_FREQ      = 50    # Hz
@@ -43,7 +43,7 @@ PWM_FREQ      = 50    # Hz
 # ── PD Controller Gains ──────────────────────────────────────────────────────
 # Start: Kp_steer small, Kd_steer = 0; increase Kp until oscillation, then add Kd
 Kp_steer = 0.8    # Proportional gain: steering error (degrees) → duty cycle change
-Kd_steer = 0.2    # Derivative gain:  error rate of change → duty cycle change
+Kd_steer = 0.0    # Derivative gain: set to 0 until P-only is stable
 Kp_speed = 0.02   # Proportional gain: RPM error → duty cycle change
 
 # ── Optical Encoder / Speed Settings ────────────────────────────────────────
@@ -350,6 +350,9 @@ def main():
     last_error = 0
     last_time  = time.time()
 
+    # Tape-loss failsafe counter
+    no_detect_frames = 0
+
     # Stop-box state machine
     stop_count     = 0      # stops completed so far
     stopped_frames = 0      # frames elapsed since current stop began
@@ -394,14 +397,28 @@ def main():
 
             # Primary: centroid of blue pixels (robust when tape is at bottom of frame)
             steering_angle = get_steering_from_mask(hsv)
+            tape_detected  = steering_angle is not None
 
-            if steering_angle is None:
+            if not tape_detected:
                 # Fallback: Hough line detection when centroid has too few pixels
                 edges      = detect_edges(hsv)
                 roi        = region_of_interest(edges)
                 segments   = detect_line_segments(roi)
                 lane_lines = average_slope_intercept(frame, segments)
+                if lane_lines:
+                    tape_detected = True
                 steering_angle = get_steering_angle(frame, lane_lines)
+
+            # Failsafe: if tape not found, count consecutive misses
+            if tape_detected:
+                no_detect_frames = 0
+            else:
+                no_detect_frames += 1
+                if no_detect_frames >= 5:
+                    print(f"[frame {frame_num}] FAILSAFE: tape lost for {no_detect_frames} frames – stopping throttle")
+                    lgpio.tx_pwm(h, THROTTLE_PIN, PWM_FREQ, DUTY_NEUTRAL)
+                    lgpio.tx_pwm(h, STEERING_PIN, PWM_FREQ, DUTY_NEUTRAL)
+                    continue
 
             # Save raw frame + mask at frame 5 for HSV tuning inspection
             if frame_num == 5:
