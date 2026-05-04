@@ -1,0 +1,20 @@
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+    compatible = "brcm,bcm2712";
+
+    fragment@0 {
+        target-path = "/";
+
+        __overlay__ {
+            optical_encoder: encoder@0 {
+                compatible = "elec424,optical-encoder";
+                gpios = <&gpio 17 GPIO_ACTIVE_HIGH>;
+                status = "okay";
+            };
+        };
+    };
+};
