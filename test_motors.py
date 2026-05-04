@@ -5,7 +5,7 @@ ESC_PIN   = 18
 SERVO_PIN = 19
 PWM_FREQ  = 50
 
-h = lgpio.gpiochip_open(4)
+h = lgpio.gpiochip_open(0)
 lgpio.gpio_claim_output(h, ESC_PIN,   0)
 lgpio.gpio_claim_output(h, SERVO_PIN, 0)
 

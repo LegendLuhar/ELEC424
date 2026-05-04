@@ -24,7 +24,13 @@ print("Initializing ESC on GPIO18 and Servo on GPIO19...")
 print("Video stream: http://168.5.172.32:8080")
 
 _PWM_FREQ = 50
-_h = lgpio.gpiochip_open(4)
+try:
+    _h = lgpio.gpiochip_open(4)
+    lgpio.gpio_claim_output(_h, ESC_PIN, 0)
+    lgpio.gpio_free(_h, ESC_PIN)
+except lgpio.error:
+    lgpio.gpiochip_close(_h)
+    _h = lgpio.gpiochip_open(0)
 lgpio.gpio_claim_output(_h, ESC_PIN, 0)
 lgpio.gpio_claim_output(_h, SERVO_PIN, 0)
 lgpio.tx_pwm(_h, ESC_PIN,   _PWM_FREQ, 7.5)
@@ -106,6 +112,7 @@ class StreamHandler(http.server.BaseHTTPRequestHandler):
 		while True:
 			with frame_lock:
 				if latest_frame is None:
+					time.sleep(0.05)
 					continue
 				_, jpg = cv2.imencode('.jpg', latest_frame)
 			self.wfile.write(b'--frame\r\n')
@@ -118,6 +125,7 @@ class StreamHandler(http.server.BaseHTTPRequestHandler):
 	def log_message(self, format, *args):
 		pass
 
+socketserver.TCPServer.allow_reuse_address = True
 server = socketserver.TCPServer(('', 8080), StreamHandler)
 threading.Thread(target=server.serve_forever, daemon=True).start()
 

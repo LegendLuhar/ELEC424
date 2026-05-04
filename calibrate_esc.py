@@ -4,7 +4,7 @@ import time
 ESC_PIN  = 18
 PWM_FREQ = 50
 
-h = lgpio.gpiochip_open(4)
+h = lgpio.gpiochip_open(0)
 lgpio.gpio_claim_output(h, ESC_PIN, 0)
 
 def set_duty(duty):
