@@ -34,8 +34,8 @@ STEERING_PIN = 19   # Servo signal wire (white) → GPIO 19
 # ── PWM Duty Cycle Settings (50 Hz, period = 20 ms) ─────────────────────────
 # 7.5% = 1.5 ms pulse = neutral/straight for both ESC and servo
 DUTY_NEUTRAL  = 7.5    # ESC neutral / servo straight
-DUTY_FORWARD  = 8.1    # Forward speed
-DUTY_MAX      = 8.3    # Hard cap
+DUTY_FORWARD  = 8.5    # Forward speed
+DUTY_MAX      = 8.7    # Hard cap
 DUTY_LEFT     = 6.0    # Full left steering
 DUTY_RIGHT    = 9.0    # Full right steering
 PWM_FREQ      = 50    # Hz
@@ -57,8 +57,8 @@ FRAME_HEIGHT = 240
 MAX_FRAMES   = 500    # Hard loop limit so motors always get neutralised on exit
 
 # ── Lane Color (Blue tape) HSV Bounds ───────────────────────────────────────
-BLUE_LOWER = np.array([80,  10,  40], dtype="uint8")   # wide range for light blue tape
-BLUE_UPPER = np.array([140, 255, 255], dtype="uint8")
+BLUE_LOWER = np.array([100,  80,  20], dtype="uint8")   # dark blue tape
+BLUE_UPPER = np.array([130, 255, 150], dtype="uint8")
 
 # ── Stop-Box Color (Red paper) HSV Bounds ───────────────────────────────────
 # Red wraps around hue=0/180 in HSV so two ranges are needed
@@ -117,10 +117,10 @@ def detect_edges(hsv):
 
 
 def region_of_interest(edges):
-    # Bottom quarter only — tape only appears near camera at current mount height
+    # Bottom half — covers more of frame in case camera is mounted higher
     h, w   = edges.shape
     mask   = np.zeros_like(edges)
-    poly   = np.array([[(0, h), (0, 3 * h // 4), (w, 3 * h // 4), (w, h)]], np.int32)
+    poly   = np.array([[(0, h), (0, h // 2), (w, h // 2), (w, h)]], np.int32)
     cv2.fillPoly(mask, poly, 255)
     return cv2.bitwise_and(edges, mask)
 
@@ -136,7 +136,7 @@ def detect_line_segments(cropped):
 def get_steering_from_mask(hsv):
     """Centroid-based steering — reliable when tape is close to camera and nearly horizontal."""
     h, w = hsv.shape[:2]
-    roi   = hsv[3 * h // 4:, :]          # bottom quarter
+    roi   = hsv[h // 2:, :]              # bottom half
     mask  = cv2.inRange(roi, BLUE_LOWER, BLUE_UPPER)
     m     = cv2.moments(mask)
     if m["m00"] < 30:                     # too few blue pixels → not reliable
@@ -406,12 +406,12 @@ def main():
             # Save raw frame + mask at frame 5 for HSV tuning inspection
             if frame_num == 5:
                 cv2.imwrite("/tmp/frame_raw.jpg", frame)
-                snap_roi = hsv[3 * frame.shape[0] // 4:, :]
+                snap_roi = hsv[frame.shape[0] // 2:, :]
                 cv2.imwrite("/tmp/frame_mask.jpg", cv2.inRange(snap_roi, BLUE_LOWER, BLUE_UPPER))
 
             # Print blue pixel count every 30 frames for live diagnostics
             if frame_num % 30 == 0:
-                dbg_roi  = hsv[3 * frame.shape[0] // 4:, :]
+                dbg_roi  = hsv[frame.shape[0] // 2:, :]
                 dbg_mask = cv2.inRange(dbg_roi, BLUE_LOWER, BLUE_UPPER)
                 print(f"[frame {frame_num}] blue_px={cv2.countNonZero(dbg_mask)}  steer={steering_angle}")
 
@@ -442,8 +442,8 @@ def main():
             else:
                 throttle_duty = DUTY_FORWARD   # open-loop fallback
 
-            # Slow down proportionally when turning hard (abs error > 10°)
-            turn_factor   = max(0.0, 1.0 - abs(error) / 60.0)
+            # Slow down slightly when turning hard, but keep minimum 50% throttle
+            turn_factor   = max(0.5, 1.0 - abs(error) / 90.0)
             throttle_duty = DUTY_NEUTRAL + (throttle_duty - DUTY_NEUTRAL) * turn_factor
             throttle_duty = max(DUTY_NEUTRAL, min(DUTY_MAX, throttle_duty))
             lgpio.tx_pwm(h, THROTTLE_PIN, PWM_FREQ, throttle_duty)
