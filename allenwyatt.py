@@ -1,7 +1,7 @@
 # COMP 424 ELEC 424 - Final Project
 # Inspired by: User raja_961, "Autonomous Lane-Keeping Car Using Raspberry Pi and OpenCV"
 # Instructables. URL: https://www.instructables.com/Autonomous-Lane-Keeping-Car-Using-Raspberry-Pi-and/
-# Built for Raspberry Pi 5 using gpiozero for hardware PWM.
+# Built for Raspberry Pi 5 using lgpio for hardware PWM.
 
 import cv2
 import numpy as np
@@ -11,7 +11,7 @@ import csv
 import threading
 import socketserver
 import http.server
-from gpiozero import Servo
+import lgpio
 
 ESC_PIN = 18
 SERVO_PIN = 19
@@ -23,31 +23,26 @@ ENCODER_PATH = "/sys/module/encoder_driver/parameters/speed_rpm"
 print("Initializing ESC on GPIO18 and Servo on GPIO19...")
 print("Video stream: http://168.5.172.32:8080")
 
-esc = Servo(
-	ESC_PIN,
-	initial_value=0,
-	min_pulse_width=0.001,
-	max_pulse_width=0.002,
-	frame_width=0.02
-)
+_PWM_FREQ = 50
+_h = lgpio.gpiochip_open(4)
+lgpio.gpio_claim_output(_h, ESC_PIN, 0)
+lgpio.gpio_claim_output(_h, SERVO_PIN, 0)
+lgpio.tx_pwm(_h, ESC_PIN,   _PWM_FREQ, 7.5)
+lgpio.tx_pwm(_h, SERVO_PIN, _PWM_FREQ, 7.5)
 
-servo = Servo(
-	SERVO_PIN,
-	initial_value=0,
-	min_pulse_width=0.001,
-	max_pulse_width=0.002,
-	frame_width=0.02
-)
+def _val_to_duty(value):
+    pulse_ms = 1.5 + value * 0.5
+    return (pulse_ms / 20.0) * 100.0
 
 def set_esc(value):
-	esc.value = max(-1.0, min(1.0, value))
+    lgpio.tx_pwm(_h, ESC_PIN, _PWM_FREQ, _val_to_duty(max(-1.0, min(1.0, value))))
 
 def set_servo(value):
-	servo.value = max(-1.0, min(1.0, value))
+    lgpio.tx_pwm(_h, SERVO_PIN, _PWM_FREQ, _val_to_duty(max(-1.0, min(1.0, value))))
 
 def neutral():
-	set_esc(0)
-	set_servo(0)
+    set_esc(0)
+    set_servo(0)
 
 # PD controller for steering
 
@@ -338,8 +333,9 @@ def main():
 	finally:
 		print("Shutting down... setting neutral.")
 		neutral()
-		esc.detach()
-		servo.detach()
+		lgpio.tx_pwm(_h, ESC_PIN,   0, 0)
+		lgpio.tx_pwm(_h, SERVO_PIN, 0, 0)
+		lgpio.gpiochip_close(_h)
 		cap.release()
 
 		if SHOW_DISPLAY:
